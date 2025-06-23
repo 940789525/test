@@ -39,22 +39,22 @@ class RawVideoExtractorCV2():
 
         # Samples a frame sample_fp X frames.
         cap = cv2.VideoCapture(video_file)
-        frameCount = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        fps = int(cap.get(cv2.CAP_PROP_FPS))
+        frameCount = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))   # 视频总帧数
+        fps = int(cap.get(cv2.CAP_PROP_FPS))   # 视频总帧率
 
-        total_duration = (frameCount + fps - 1) // fps
-        start_sec, end_sec = 0, total_duration
+        total_duration = (frameCount + fps - 1) // fps   # 视频总时长
+        start_sec, end_sec = 0, total_duration   # 视频开始和结束时间
 
         if start_time is not None:
             start_sec, end_sec = start_time, end_time if end_time <= total_duration else total_duration
             cap.set(cv2.CAP_PROP_POS_FRAMES, int(start_time * fps))
 
-        interval = 1
+        interval = 1   # 采样间隔
         if sample_fp > 0:
-            interval = fps // sample_fp
+            interval = fps // sample_fp  # 采样间隔
         else:
             sample_fp = fps
-        if interval == 0: interval = 1
+        if interval == 0: interval = 1   # 如果采样间隔为0，则改为1
 
         inds = [ind for ind in np.arange(0, fps, interval)]
         assert len(inds) >= sample_fp
@@ -79,14 +79,15 @@ class RawVideoExtractorCV2():
             video_data = th.tensor(np.stack(images))
         else:
             video_data = th.zeros(1)
-        return {'video': video_data}
+        return {'video': video_data}   # shape (采样数,3,224,224)
 
     def get_video_data(self, video_path, start_time=None, end_time=None):
         image_input = self.video_to_tensor(video_path, self.transform, sample_fp=self.framerate, start_time=start_time, end_time=end_time)
-        return image_input
+        return image_input   # {video:tensor([[[[ 0.4997,  0.3975,  0.5727,  ...,  1.2880,  1.2734,  1.2734],
+          #[ 0...5844,  ...,  1.3496,  1.3496,  1.3780]]]])}}  返回的张量形状 (采样数，3，224，224)
 
-    def process_raw_data(self, raw_video_data):
-        tensor_size = raw_video_data.size()
+    def process_raw_data(self, raw_video_data):  # raw_video_data shape (采样数，3，224，224)
+        tensor_size = raw_video_data.size()   # torch.Size([采用数, 3, 224, 224])
         tensor = raw_video_data.view(-1, 1, tensor_size[-3], tensor_size[-2], tensor_size[-1])
         return tensor
 

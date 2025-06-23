@@ -134,12 +134,12 @@ class SimpleTokenizer(object):
         return text
 
     def tokenize(self, text):
-        tokens = []
+        tokens = []   # text 是字符串 是一个描述视频的完整句子
         text = whitespace_clean(basic_clean(text)).lower()
         for token in re.findall(self.pat, text):
             token = ''.join(self.byte_encoder[b] for b in token.encode('utf-8'))
             tokens.extend(bpe_token for bpe_token in self.bpe(token).split(' '))
-        return tokens
+        return tokens   # 是一个列表   返回的是分词后的结果  (长度不一定等于单词数，可能会拆分)
 
     def convert_tokens_to_ids(self, tokens):
         return [self.encoder[bpe_token] for bpe_token in tokens]

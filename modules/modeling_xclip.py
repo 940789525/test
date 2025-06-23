@@ -257,7 +257,7 @@ class XCLIP(CLIP4ClipPreTrainedModel):
             seq_features: all tokens of text         # [bs, num_words, dim]
             visual_output: all frames of video       # [bs, num_frames, dim]
         """
-        sequence_output, visual_output = sequence_output.contiguous(), visual_output.contiguous()
+        sequence_output, visual_output = sequence_output.contiguous(), visual_output.contiguous()   # 调整内存，让张量储存连续  sequence_output 句子特征  visual_output 视频特征
 
         if sim_header == "meanP":
             # Default: Parameter-free type
@@ -273,41 +273,41 @@ class XCLIP(CLIP4ClipPreTrainedModel):
             visual_output, _ = pad_packed_sequence(visual_output, batch_first=True)
             visual_output = torch.cat((visual_output, visual_output_original[:, visual_output.size(1):, ...].contiguous()), dim=1)
             visual_output = visual_output + visual_output_original
-        elif sim_header == "seqTransf":
+        elif sim_header == "seqTransf":  # 调试默认走这个条件
             # Sequential type: Transformer Encoder
-            visual_output_original = visual_output
-            seq_length = visual_output.size(1)
-            position_ids = torch.arange(seq_length, dtype=torch.long, device=visual_output.device)
-            position_ids = position_ids.unsqueeze(0).expand(visual_output.size(0), -1)
-            frame_position_embeddings = self.frame_position_embeddings(position_ids)
-            visual_output = visual_output + frame_position_embeddings
+            visual_output_original = visual_output    # 视频特征赋值给visual_output_original
+            seq_length = visual_output.size(1)    # 视频最大帧数
+            position_ids = torch.arange(seq_length, dtype=torch.long, device=visual_output.device)  # 得到一个0~seq_length-1的有序张量  形状为[12]
+            position_ids = position_ids.unsqueeze(0).expand(visual_output.size(0), -1)  # 依据当前批次非冗余视频的数量扩充位置张量
+            frame_position_embeddings = self.frame_position_embeddings(position_ids)  # 得到视频帧位置编码 shape = [2,12,512]  得到的位置编码每一帧都不同，但是不同视频的对应帧相同，是关于帧的位置编码
+            visual_output = visual_output + frame_position_embeddings   # 视频帧位置编码加到视频特征上
 
-            extended_video_mask = (1.0 - video_mask.unsqueeze(1)) * -1000000.0
-            extended_video_mask = extended_video_mask.expand(-1, video_mask.size(1), -1)
-            visual_output = visual_output.permute(1, 0, 2)  # NLD -> LND
-            visual_output = self.transformerClip(visual_output, extended_video_mask)
-            visual_output = visual_output.permute(1, 0, 2)  # LND -> NLD
-            visual_output = visual_output + visual_output_original
+            extended_video_mask = (1.0 - video_mask.unsqueeze(1)) * -1000000.0   # 无效帧*-1000000.0，之后会无限接近于0  extended_video_mask.shape = [2,1,12]
+            extended_video_mask = extended_video_mask.expand(-1, video_mask.size(1), -1)  # 扩充第2维的维度  extended_video_mask.shape = [2,12,12]
+            visual_output = visual_output.permute(1, 0, 2)  # NLD -> LND   # 视频特征  [2,12,512]->[12,2,512]
+            visual_output = self.transformerClip(visual_output, extended_video_mask)  # 传入视频特征和视频掩码  得到考虑了视频掩码的视频特征，通过多层Transformer捕捉视频帧之间的时序关系
+            visual_output = visual_output.permute(1, 0, 2)  # LND -> NLD  [12,2,512]->[2,12,512]
+            visual_output = visual_output + visual_output_original   # 残差连接 元素未处理过(没有位置编码且没有考虑掩码处理)的视频特征
 
         # video-level visual feature 
-        video_output = visual_output / visual_output.norm(dim=-1, keepdim=True)
-        video_output = self._mean_pooling_for_similarity_visual(video_output, video_mask)
-        video_output = video_output / video_output.norm(dim=-1, keepdim=True)                    # [bs, dim]
+        video_output = visual_output / visual_output.norm(dim=-1, keepdim=True)   # 归一化视频特征  输出发现没什么变化？？  在那个维度(级别)进行归一化
+        video_output = self._mean_pooling_for_similarity_visual(video_output, video_mask) # 对视频帧特征（video_output）在时间维度（帧数）上进行加权平均，生成视频级表征（video-level representation）
+        video_output = video_output / video_output.norm(dim=-1, keepdim=True) # [bs, dim] 进行归一化
 
         # frame-level visual features       
         if self.use_original_clip_for_frame_features:
-            frame_features = visual_output_original / visual_output_original.norm(dim=-1, keepdim=True)                # [bs, num_frames, dim]
+            frame_features = visual_output_original / visual_output_original.norm(dim=-1, keepdim=True)  # 对帧级别的视频特征（frame-level features）进行 L2 归一化处理              # [bs, num_frames, dim]
         else:
             frame_features = visual_output / visual_output.norm(dim=-1, keepdim=True)                                  # [bs, num_frames, dim]
 
         # sentence-level textual feature
-        sentence_output = sequence_output.squeeze(1)
-        sentence_output  = sentence_output / sentence_output.norm(dim=-1, keepdim=True)          # [bs, dim]
+        sentence_output = sequence_output.squeeze(1)  # [96,1,512]->[96,512]
+        sentence_output  = sentence_output / sentence_output.norm(dim=-1, keepdim=True)          # [bs, dim] 对句子级别的文本特征（sentence-level features） 进行 L2 归一化（单位长度归一化）
         
         # word-level textual features
-        word_features = seq_features / seq_features.norm(dim=-1, keepdim=True)                   # [bs, num_words, dim]
+        word_features = seq_features / seq_features.norm(dim=-1, keepdim=True)                   # [bs, num_words, dim]  对词级别的文本特征（word-level features） 进行 L2 归一化（单位长度归一化）
 
-        logit_scale = self.clip.logit_scale.exp()
+        logit_scale = self.clip.logit_scale.exp()  # 控制相似度计算中的温度系数
 
         if self.training:
             video_output = allgather(video_output, self.task_config)
@@ -317,7 +317,7 @@ class XCLIP(CLIP4ClipPreTrainedModel):
             torch.distributed.barrier()
 
         # video-sentence score 
-        video_sentence_logits = logit_scale * torch.matmul(torch.matmul(sentence_output, self.global_mat_weight), video_output.t())
+        video_sentence_logits = logit_scale * torch.matmul(torch.matmul(sentence_output, self.global_mat_weight), video_output.t()) # 句子特征和视频特征之间的全局相似度  self.global_mat_weight 是一个可学习的权重矩阵，用于调节这种跨模态匹配中的重要性
 
         # video-word score
         video_word_logits = logit_scale * torch.sum(torch.matmul(word_features, video_output.t()) \
@@ -392,13 +392,13 @@ class XCLIP(CLIP4ClipPreTrainedModel):
 
     def get_similarity_logits(self, sequence_output, seq_features, visual_output, attention_mask, video_mask, shaped=False, loose_type=False):
         if shaped is False:
-            attention_mask = attention_mask.view(-1, attention_mask.shape[-1])
-            video_mask = video_mask.view(-1, video_mask.shape[-1])
+            attention_mask = attention_mask.view(-1, attention_mask.shape[-1])   # 句子掩码张量形状调整  [96,1,32]->[96,32]
+            video_mask = video_mask.view(-1, video_mask.shape[-1])   # 视频掩码张量形状调整 [2,1,12]->[2,12]
 
         contrastive_direction = ()
-        if loose_type:
+        if loose_type:  # 调试进入这个条件
             assert self.sim_header in ["meanP", "seqLSTM", "seqTransf"]
-            retrieve_logits = self._loose_similarity(sequence_output, seq_features, visual_output, attention_mask, video_mask, sim_header=self.sim_header)
+            retrieve_logits = self._loose_similarity(sequence_output, seq_features, visual_output, attention_mask, video_mask, sim_header=self.sim_header)  # 原有特征张量直接传入，将形状变化后的掩码和相似度计算方法作为参数传入
         else:
             assert self.sim_header in ["tightTransf"]
             retrieve_logits = self._cross_similarity(sequence_output, visual_output, attention_mask, video_mask, )

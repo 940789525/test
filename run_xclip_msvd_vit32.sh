@@ -9,7 +9,7 @@ CUDA_VISIBLE_DEVICES=3 python -m torch.distributed.launch \
     --data_path ${DATA_PATH}/MSVD \
     --features_path ${DATA_PATH}/MSVD_Videos \
     --output_dir ckpts3/${job_name} \
-    --lr 1e-4 --max_words 32 --max_frames 12 --batch_size_val 64 \
+    --lr 1e-4 --max_words 32 --max_frames 12 --batch_size_val 96 \
     --datatype msvd \
     --feature_framerate 1 --coef_lr 1e-3 \
     --freeze_layer_num 0 --slice_framepos 2 \

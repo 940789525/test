@@ -87,11 +87,11 @@ def dataloader_msvd_test(args, tokenizer, subset="test"):
         data_path=args.data_path,
         features_path=args.features_path,
         max_words=args.max_words,
-        feature_framerate=args.feature_framerate,
+        feature_framerate=args.feature_framerate,  # ??
         tokenizer=tokenizer,
         max_frames=args.max_frames,
-        frame_order=args.eval_frame_order,
-        slice_framepos=args.slice_framepos,
+        frame_order=args.eval_frame_order,  # ？？
+        slice_framepos=args.slice_framepos,  # ？？
     )
     dataloader_msrvtt = DataLoader(
         msvd_testset,
@@ -100,7 +100,7 @@ def dataloader_msvd_test(args, tokenizer, subset="test"):
         shuffle=False,
         drop_last=False,
     )
-    return dataloader_msrvtt, len(msvd_testset)
+    return dataloader_msrvtt, len(msvd_testset)  # 返回测试集的dataloader 和 测试机句子总数
 
 
 def dataloader_lsmdc_train(args, tokenizer):
